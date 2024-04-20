@@ -1,4 +1,4 @@
-﻿namespace DrinkVendingMachineSite.Models.EntityFramework
+﻿namespace DrinkVendingMachineSite.Models
 {
     public abstract class BaseEntity
     {
