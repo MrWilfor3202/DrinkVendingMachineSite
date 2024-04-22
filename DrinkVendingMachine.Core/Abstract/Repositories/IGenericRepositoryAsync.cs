@@ -1,4 +1,4 @@
-﻿namespace DrinkVendingMachineSite.Repositories.Abstract
+﻿namespace DrinkVendingMachine.Core.Abstract.Repositories
 {
     public interface IGenericRepositoryAsync<T> where T : class
     {
@@ -8,8 +8,8 @@
 
         Task<T> AddAsync(T entity);
 
-        Task UpdateAsync(T entity);
+        Task Update(T entity);
 
-        Task DeleteAsync(T entity);
+        Task Delete(T entity);
     }
 }

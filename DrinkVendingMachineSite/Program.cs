@@ -1,13 +1,31 @@
-using DrinkVendingMachineSite.DatabaseContext;
+using DrinkVendingMachine.Core.Abstract.Repositories;
+using DrinkVendingMachine.Core.Abstract.Services;
+using DrinkVendingMachine.Core.Abstract.UnitOfWork;
+using DrinkVendingMachine.DataAccess.DatabaseContext;
+using DrinkVendingMachine.DataAccess.Implementations.Repositories.EF;
+using DrinkVendingMachine.DataAccess.Implementations.UnitOfWork;
+using DrinkVendingMachine.Services.Implementations.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 //MSSQLSERVER settings
 builder.Services.AddDbContext<DrinkVendingMachineDBContext>(options
-    => options.UseSqlServer(("DatabaseConnection") ?? throw new InvalidOperationException()));
+    => options.UseSqlServer(("DatabaseConnection"), b => b.MigrationsAssembly("DrinkVendingMachine.API")));
 
-// Add services to the container.
+//Repositories
+builder.Services.AddTransient(typeof(IGenericRepositoryAsync<>), typeof(EFGenericRepositoryAsync<>));
+builder.Services.AddTransient<IDrinkEntitiesRepositoryAsync, EFDrinkEntitiesRepositoryAsync>();
+builder.Services.AddTransient<ICoinEntitiesRepositoryAsync, EFCoinEntitiesRepositoryAsync>();
+
+//Unit of Work
+builder.Services.AddTransient<IUnitOfWorkAsync, EFUnitOfWorkAsync>();
+
+//Services
+builder.Services.AddTransient(typeof(IGenericServiceAsync<>), typeof(GenericServiceAsync<>));
+builder.Services.AddTransient<IDrinkEntitiesServiceAsync, DrinkEntitiesServiceAsync>();
+builder.Services.AddTransient<ICoinEntitiesServiceAsync, CoinEntitiesServiceAsync>();
+
 
 builder.Services.AddControllersWithViews();
 

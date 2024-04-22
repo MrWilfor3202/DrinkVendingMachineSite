@@ -1,7 +1,7 @@
-﻿using DrinkVendingMachineSite.Models;
+﻿using DrinkVendingMachine.Core.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace DrinkVendingMachineSite.DatabaseContext
+namespace DrinkVendingMachine.DataAccess.DatabaseContext
 {
     public class DrinkVendingMachineDBContext : DbContext
     {
@@ -10,6 +10,8 @@ namespace DrinkVendingMachineSite.DatabaseContext
         : base(options) { }
 
         public DbSet<DrinkEntity> Drinks { get; set; }
+       
+        public DbSet<CoinEntity> Coins { get; set; }
 
         /*
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
