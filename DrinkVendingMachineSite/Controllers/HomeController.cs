@@ -1,10 +1,8 @@
-﻿using Azure;
-using DrinkVendingMachine.API.Contracts;
-using DrinkVendingMachine.Core.Abstract.Repositories;
+﻿using DrinkVendingMachine.API.ExtensionsMethods;
 using DrinkVendingMachine.Core.Abstract.Services;
-using DrinkVendingMachine.Core.Abstract.UnitOfWork;
 using DrinkVendingMachine.Core.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Immutable;
 
 namespace DrinkVendingMachineSite.Controllers
 {
@@ -24,65 +22,124 @@ namespace DrinkVendingMachineSite.Controllers
         [HttpGet]
         public async Task<IEnumerable<DrinkEntity>> GetAllDrinksAsync() => await _drinksService.GetAllAsync();
 
-
         [HttpPost]
-        public async Task<ActionResult<DrinkEntity>> BuyDrinkAsync([FromBody] DrinksBuyResponse response)
+        public async Task<ActionResult> ContributeCoin(int id)
         {
-            if (!ModelState.IsValid)
+            Dictionary<int, int> coinsDict;
+
+            if (await _coinsService.GetByIdAsync(id) == null)
+                return NotFound($"There isn't coin with id {id}");
+
+            if (!HttpContext.Session.Keys.Contains("contributedCoinsCollection"))
             {
-                return BadRequest(response);
+                HttpContext.Session.SetCollectionAsJson("contributedCoinsCollection", 
+                    new Dictionary<int, int> { [id] = 1 });
+
+                return Ok();
             }
 
-            DrinkEntity drinkEntity = await _drinksService.GetByIdAsync(response.Id);
+            coinsDict = HttpContext
+                   .Session
+                   .GetCollectionFromJson<Dictionary<int, int>>("contributedCoinsCollection");
 
-            if(drinkEntity == null)
-                return NotFound($"There's not drink with Id: {response.Id}");
+            if (coinsDict.ContainsKey(id))
+                coinsDict[id]++;
+            else
+                coinsDict.Add(id, 1);
 
-            drinkEntity.Count--;
-            await _drinksService.Update(drinkEntity);
 
+            HttpContext.Session.SetCollectionAsJson("contributedCoinsCollection", coinsDict);
 
-            foreach (var idCostPair in response.idCostPairs)
+            return Ok();
+        }
+
+        [HttpPut]
+        public async Task<ActionResult> BuyDrinkAsync(int id) 
+        {
+            var coinsDict = HttpContext
+                 .Session
+                 .GetCollectionFromJson<Dictionary<int, int>>("contributedCoinsCollection");
+
+            DrinkEntity drinkEntity = await _drinksService.GetByIdAsync(id);
+
+            if (drinkEntity == null)
+                return NotFound($"There isn't drink with id {id}");
+
+            if (drinkEntity.Count < 0)
+                return BadRequest($"Drinks are out! Drink's id is {id}");
+
+            int sum = 0;
+
+            foreach (var coinIdCount in coinsDict)
             {
-                int coinId = idCostPair.Item1;
-                int coinsCount = idCostPair.Item2;
+                var coinEntity = await _coinsService.GetByIdAsync(coinIdCount.Key);
+                sum += coinEntity.Price * coinIdCount.Value;
+            }
 
-                CoinEntity coinEntity = await _coinsService.GetByIdAsync(coinId);
+            if (sum < drinkEntity.Price)
+                return BadRequest($"You need more money for this drink! Drink's id is {id}");
 
-                if(coinEntity == null)
-                    return NotFound($"There's not coin with Id: {coinId}");
-
-                coinEntity.Count += coinsCount;
-
+            foreach(var coinIdCount in coinsDict)
+            {
+                var coinEntity = await _coinsService.GetByIdAsync(coinIdCount.Key);
+                coinEntity.Count -= coinIdCount.Value;
                 await _coinsService.Update(coinEntity);
             }
 
-            await _drinksService.SaveChangesAsync();
+            drinkEntity.Count--;
 
-            return Ok(drinkEntity);
+            await _drinksService.Update(drinkEntity);
+            await _drinksService.SaveChangesAsync();    
+
+            return Ok();
         }
 
-        [HttpPost]
-        public async Task<ActionResult<IEnumerable<CoinEntity>>> PickUpChange(IEnumerable<CoinEntity> coins) 
+        [HttpGet]
+        public async Task<bool> CanGetFullChange(int sum)
         {
-            foreach (var coin in coins) 
+            var allCoins = await _coinsService.GetAllAsync();
+
+            allCoins = allCoins.OrderByDescending(c => c.Price).ToImmutableList();
+
+            foreach (var coin in allCoins)
             {
-                CoinEntity coinEntityInDb = await _coinsService.GetByIdAsync(coin.Id);
+                if (sum == 0)
+                    return true;
 
-                if(coinEntityInDb == null)
-                    return NotFound($"There's not coin with Id: {coin.Id}");
+                int expectedCount = sum / coin.Price;
+                int actualCount = Math.Min(coin.Price * expectedCount, coin.Price * coin.Count);
 
-                if (coinEntityInDb.Count < coin.Count)
-                    return BadRequest("");
-
-                coinEntityInDb.Count -= coin.Count;
-
-                await _coinsService.Update(coinEntityInDb);
+                sum -= actualCount;
             }
 
-            await _coinsService.SaveChangesAsync();
-
-            return Ok(coins);
+            return false;
         }
+
+        private async Task<IEnumerable<CoinEntity>> CountTheChange(int sum)
+        {
+            var allCoins = await _coinsService.GetAllAsync();
+
+            allCoins = allCoins.OrderByDescending(c => c.Price).ToImmutableList();
+
+            IList<CoinEntity> result = new List<CoinEntity>();
+
+            foreach (var coin in allCoins)
+            {
+                if (sum == 0)
+                    break;
+                    
+                int expectedCount = sum / coin.Price;
+                int actualCount = Math.Min(coin.Price * expectedCount, coin.Price * coin.Count);
+
+                sum -= actualCount;
+
+                CoinEntity coinEntity = new CoinEntity() { Id = coin.Id, Count = actualCount, Locked = false, Price = coin.Price };
+                result.Add(coinEntity);
+            }
+
+            return result;
+
+        }
+
     }
 }
